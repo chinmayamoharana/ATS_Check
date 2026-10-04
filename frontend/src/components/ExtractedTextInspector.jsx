@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { FileText, Copy, Check, Eye, Database, ShieldCheck } from 'lucide-react';
 
-const ExtractedTextInspector = ({ parsedResume, resumeText }) => {
+const ExtractedTextInspector = ({ parsedResume }) => {
   const [copied, setCopied] = useState(false);
   const [showFullText, setShowFullText] = useState(true);
 
-  if (!parsedResume && !resumeText) return null;
+  if (!parsedResume) return null;
 
-  const fullText = parsedResume?.full_extracted_text || parsedResume?.preview_text || resumeText || '';
+  const fullText = parsedResume.full_extracted_text || '';
   const wordCount = parsedResume?.word_count || fullText.split(/\s+/).filter(Boolean).length;
   const charCount = parsedResume?.character_count || fullText.length;
 
@@ -30,11 +30,11 @@ const ExtractedTextInspector = ({ parsedResume, resumeText }) => {
             <div className="flex items-center gap-2">
               <h3 className="text-base font-extrabold text-white">Full Extracted Resume Content Inspector</h3>
               <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3" /> 100% Extracted
+                <ShieldCheck className="w-3 h-3" /> Extracted text
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Complete raw text extracted by multi-engine parser ({wordCount} Words • {charCount} Characters).
+              Review the text the analyzer received ({wordCount} words • {charCount} characters). PDF extraction can miss content from scans or complex layouts.
             </p>
           </div>
         </div>

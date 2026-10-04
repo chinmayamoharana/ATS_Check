@@ -12,12 +12,6 @@ const BitByBitInspector = ({ bitByBitData }) => {
     bit_by_bit_section_scores = {}
   } = bitByBitData;
 
-  const getSectionScoreColor = (val) => {
-    if (val >= 85) return 'bg-emerald-500 text-emerald-400 border-emerald-500/30';
-    if (val >= 65) return 'bg-amber-500 text-amber-400 border-amber-500/30';
-    return 'bg-rose-500 text-rose-400 border-rose-500/30';
-  };
-
   return (
     <div className="glass-card rounded-2xl p-6 border border-slate-800 mb-8">
       
@@ -32,7 +26,7 @@ const BitByBitInspector = ({ bitByBitData }) => {
               Bit-by-Bit Deep Resume Parser & Section Auditor
             </h3>
             <p className="text-xs text-slate-400">
-              Line-by-line breakdown of extracted entities and individual section scores as seen by ATS parsers.
+              Shows only details detected in the extracted text; missing fields are left unfilled rather than guessed.
             </p>
           </div>
         </div>
@@ -131,11 +125,11 @@ const BitByBitInspector = ({ bitByBitData }) => {
                     <div>
                       <span className="font-bold text-white text-xs block">{role.title}</span>
                       <span className="text-[11px] text-indigo-400 font-medium">{role.company}</span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">{role.dates} • {role.bullet_count} Bullet points</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{role.dates} • {role.bullet_count} bullets detected for this role</span>
                     </div>
 
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      {role.role_score}% Match
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                      Text extracted
                     </span>
                   </div>
                 ))}
@@ -158,8 +152,8 @@ const BitByBitInspector = ({ bitByBitData }) => {
                 {education_entries.map((edu, idx) => (
                   <div key={idx} className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
                     <div>
-                      <span className="font-bold text-white text-xs block">{edu.degree} - {edu.major}</span>
-                      <span className="text-[11px] text-slate-400">{edu.institution} • {edu.year}</span>
+                      <span className="font-bold text-white text-xs block">{edu.degree}</span>
+                      <span className="text-[11px] text-slate-400">{edu.details}</span>
                     </div>
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   </div>
@@ -169,6 +163,22 @@ const BitByBitInspector = ({ bitByBitData }) => {
               <div className="p-3 rounded-xl bg-slate-900/50 text-xs text-slate-400 text-center">
                 No education degree entries detected. Include degree titles like <i>"B.Tech Computer Science"</i>.
               </div>
+            )}
+          </div>
+
+          {/* Project Entries */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+              <FolderGit2 className="w-4 h-4 text-emerald-400" /> Project Entries ({project_entries.length})
+            </h4>
+            {project_entries.length ? (
+              <div className="space-y-2">
+                {project_entries.map((project, idx) => (
+                  <div key={`${project.title}-${idx}`} className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-200">{project.title}</div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-slate-900/50 text-xs text-slate-400 text-center">No project bullet entries were extracted from the Projects section.</div>
             )}
           </div>
 

@@ -14,41 +14,42 @@ def extract_text(file):
     if file_name.endswith('.pdf'):
         file_bytes = file.read() if hasattr(file, 'read') else b""
         
-        # Engine 1: pdfplumber
-        text1 = ""
+        import io
+        candidates = []
         try:
-            import io
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                for page in pdf.pages:
-                    extracted = page.extract_text(layout=False) or page.extract_text() or ""
-                    text1 += extracted + "\n"
-        except Exception as e1:
-            print(f"pdfplumber extraction error: {e1}")
+                text1 = "\n".join(
+                    (page.extract_text(layout=False) or page.extract_text() or "")
+                    for page in pdf.pages
+                ).strip()
+            if text1:
+                candidates.append(text1)
+        except Exception:
+            pass
 
-        # Engine 2: pypdfium2
-        text2 = ""
-        try:
-            import pypdfium2
-            pdf_doc = pypdfium2.PdfDocument(file_bytes)
-            for page in pdf_doc:
-                textpage = page.get_textpage()
-                text2 += textpage.get_text_range() + "\n"
-        except Exception as e2:
-            print(f"pypdfium2 extraction error: {e2}")
+        # Avoid two additional parser passes for the common, well-extracted case.
+        if not candidates or len(re.findall(r"\b[\w+#.-]+\b", candidates[0])) < 80 or _extraction_candidate_score(candidates[0]) < 65:
+            try:
+                import pypdfium2
+                pdf_doc = pypdfium2.PdfDocument(file_bytes)
+                text2 = "\n".join(page.get_textpage().get_text_range() for page in pdf_doc).strip()
+                if text2:
+                    candidates.append(text2)
+            except Exception:
+                pass
 
-        # Engine 3: pdfminer.six
-        text3 = ""
-        try:
-            import io
-            from pdfminer.high_level import extract_text as pdfminer_extract
-            text3 = pdfminer_extract(io.BytesIO(file_bytes)) or ""
-        except Exception as e3:
-            print(f"pdfminer extraction error: {e3}")
+        if not candidates or max(_extraction_candidate_score(item) for item in candidates) < 65:
+            try:
+                from pdfminer.high_level import extract_text as pdfminer_extract
+                text3 = (pdfminer_extract(io.BytesIO(file_bytes)) or "").strip()
+                if text3:
+                    candidates.append(text3)
+            except Exception:
+                pass
 
-        # Choose the engine that extracted the most complete content
-        candidates = [t.strip() for t in [text1, text2, text3] if t.strip()]
+        # Prefer complete, readable text over raw character count.
         if candidates:
-            text = max(candidates, key=len)
+            text = max(candidates, key=_extraction_candidate_score)
 
     elif file_name.endswith('.docx'):
         try:
@@ -75,6 +76,18 @@ def extract_text(file):
     # Clean null bytes & control chars
     text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
     return text.strip()
+
+
+def _extraction_candidate_score(text):
+    words = re.findall(r"\b[\w+#.-]+\b", text, re.UNICODE)
+    non_space = [char for char in text if not char.isspace()]
+    readable = sum(char.isalnum() or char in ".,;:|/+-@()#%&'" for char in non_space)
+    readability = readable / max(len(non_space), 1)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    uniqueness = len(set(lines)) / max(len(lines), 1)
+    replacements = text.count("\ufffd")
+    completeness = min(len(words) / 400, 1)
+    return completeness * 40 + readability * 45 + uniqueness * 15 - replacements
 
 
 
@@ -141,6 +154,15 @@ SKILLS_TAXONOMY = {
     "Soft Skills": [
         "leadership", "communication", "problem solving", "teamwork", "agile", "scrum",
         "collaboration", "time management", "critical thinking", "mentorship", "project management"
+    ],
+    "Product & Business": [
+        "product management", "product manager", "product strategy", "product roadmap", "roadmapping", "roadmap",
+        "stakeholder management", "stakeholder engagement", "user research", "market research",
+        "business analysis", "business strategy", "go to market", "requirements gathering",
+        "requirements analysis", "user stories", "product analytics", "kpi", "okrs",
+        "backlog management", "prioritization", "customer success", "process improvement",
+        "operations management", "financial modeling", "risk management", "sales strategy",
+        "marketing strategy", "cross functional", "analytics", "stakeholder relations", "program management"
     ]
 }
 
@@ -237,16 +259,8 @@ def generate_bullet_suggestions(missing_keywords, job_role="fullstack"):
         suggestions.append({
             "keyword": kw_name,
             "category": kw["category"],
-            "suggested_bullet": f"• Spearheaded integration of {kw_name} within core {template['title']} architecture, accelerating processing speed by 35% and improving uptime.",
-            "alt_bullet": f"• Engineered automated pipelines incorporating {kw_name}, scaling system throughput to handle 500k+ daily transactions."
-        })
-
-    if not suggestions:
-        suggestions.append({
-            "keyword": "High Impact Action",
-            "category": "Optimization",
-            "suggested_bullet": "• Architected microservices infrastructure, reducing system response latency by 40% and cutting cloud expenditure by $15k annually.",
-            "alt_bullet": "• Optimized database indexing and Redis cache layers, boosting throughput by 3x across production services."
+            "suggested_bullet": f"• Used {kw_name} to deliver [specific task or feature], improving [measured outcome] by [verified result].",
+            "alt_bullet": f"• Applied {kw_name} to [project or process]; measured the result using [metric or evidence]."
         })
 
     return suggestions
@@ -280,74 +294,115 @@ def check_contact_info(text):
 
 
 def clean_candidate_name(text):
-    """Clean candidate name from first line, fixing spaced out characters (e.g. C H I N M A Y A or CHIN MAYA M OHAR AN A)."""
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    """Return a plausible name from the first line, without inventing one."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return "Candidate Profile"
-    
-    first_line = lines[0]
-    cleaned = re.sub(r'(@|http|phone|resume|\+?\d{5,}|✉|\|)', '', first_line, flags=re.I).strip()
-    
-    # Specific fix for spaced name fragments like CHIN MAYA M OHAR AN A
-    if re.search(r'chin\s*maya(?:\s*m)?\s*ohar\s*an?\s*a?', cleaned, re.I):
-        return "Chinmaya Moharana"
-
-    tokens = cleaned.split()
-    merged = []
-    i = 0
-    while i < len(tokens):
-        tok = tokens[i]
-        if i + 1 < len(tokens) and len(tokens[i+1]) <= 2 and tokens[i+1].isalpha():
-            combined = tok + tokens[i+1]
-            i += 2
-            while i < len(tokens) and len(tokens[i]) <= 2 and tokens[i].isalpha():
-                combined += tokens[i]
-                i += 1
-            merged.append(combined)
-        else:
-            merged.append(tok)
-            i += 1
-
-    candidate_name = " ".join(merged)
-    candidate_name = re.sub(r'\s+', ' ', candidate_name).strip()
-
-    if len(candidate_name) > 2 and len(candidate_name) < 50:
-        return candidate_name.title() if candidate_name.isupper() else candidate_name
-    return "Candidate Profile"
+    first_line = re.split(r"\s*[|•]\s*", lines[0], maxsplit=1)[0]
+    candidate_name = re.sub(r"\b(?:resume|curriculum vitae)\b", "", first_line, flags=re.I)
+    candidate_name = re.sub(r"[^\w .'-]", " ", candidate_name)
+    candidate_name = re.sub(r"\s+", " ", candidate_name).strip(" .-'")
+    headings = {alias for aliases in SECTION_ALIASES.values() for alias in aliases}
+    tokens = candidate_name.split()
+    if (not candidate_name or len(candidate_name) > 60 or len(tokens) > 5
+            or candidate_name.lower() in headings or re.search(r"\d|@|https?", first_line, re.I)):
+        return "Candidate Profile"
+    return candidate_name.title() if candidate_name.isupper() else candidate_name
 
 
+
+
+SECTION_ALIASES = {
+    "summary": ("summary", "professional summary", "career summary", "profile", "professional profile", "objective", "about me"),
+    "experience": ("experience", "work experience", "professional experience", "work history", "employment history", "employment"),
+    "education": ("education", "education and degrees", "education & degrees", "academic background", "academic qualifications"),
+    "skills": ("skills", "technical skills", "core skills", "technical proficiencies", "competencies", "technologies"),
+    "projects": ("projects", "key projects", "personal projects", "selected projects", "portfolio"),
+    "certifications": ("certifications", "certificates", "licenses", "licenses and certifications"),
+}
+
+
+def _normalize_heading(line):
+    normalized = re.sub(r"^[\s•●▪*-]+|[\s:：|—–-]+$", "", line.lower()).strip()
+    return re.sub(r"\s+", " ", normalized)
+
+
+def split_resume_sections(text):
+    """Return content grouped under recognized, standalone section headings."""
+    blocks = {key: [] for key in SECTION_ALIASES}
+    current = None
+    for line in text.splitlines():
+        heading = _normalize_heading(line)
+        matched = next((key for key, aliases in SECTION_ALIASES.items() if heading in aliases), None)
+        if matched:
+            current = matched
+        elif current:
+            blocks[current].append(line)
+    return {key: "\n".join(lines).strip() for key, lines in blocks.items()}
+
+
+def contains_term(text, term):
+    """Match a keyword as a complete term while allowing flexible phrase spacing."""
+    term_pattern = re.escape(term.strip())
+    term_pattern = term_pattern.replace(r"\ ", r"[\s/_-]+")
+    term_pattern = term_pattern.replace(r"\/", r"[\s/_-]*")
+    return bool(re.search(r"(?<![a-z0-9])" + term_pattern + r"(?![a-z0-9])", text, re.IGNORECASE))
+
+
+def _resume_check(check_id, category, label, earned, maximum, finding, recommendation=""):
+    earned = round(max(0, min(float(earned), float(maximum))), 1)
+    ratio = earned / maximum if maximum else 1
+    return {
+        "id": check_id,
+        "category": category,
+        "label": label,
+        "earned": earned,
+        "max": maximum,
+        "status": "not_scored" if not maximum else "good" if ratio >= 0.8 else "warning" if ratio >= 0.5 else "needs_work",
+        "finding": finding,
+        "recommendation": recommendation,
+    }
+
+
+def review_extracted_text(text):
+    """Flag obvious extraction problems without pretending to measure ATS success."""
+    words = re.findall(r"\b[\w+#.-]+\b", text, re.UNICODE)
+    warnings = []
+    if len(words) < 80:
+        warnings.append(f"Only {len(words)} words were extracted. Check that all resume pages and sections are present.")
+    if "\ufffd" in text:
+        warnings.append("Some characters could not be decoded. Review the extracted text before using the score.")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) >= 8:
+        repeated_ratio = 1 - (len(set(lines)) / len(lines))
+        if repeated_ratio > 0.35:
+            warnings.append("Many extracted lines are repeated. A complex layout may have affected text reading order.")
+    if lines and not any(_normalize_heading(line) in {alias for aliases in SECTION_ALIASES.values() for alias in aliases} for line in lines):
+        warnings.append("No standard resume section headings were recognized. Check the text extraction and headings.")
+    return {"word_count": len(words), "warnings": warnings}
 
 
 def audit_sections(text):
-    """Detect essential resume sections."""
-    text_lower = text.lower()
+    """Detect section headings, requiring a heading-like line to avoid body-text matches."""
+    titles = {
+        "summary": "Professional Summary / Objective",
+        "experience": "Work Experience / History",
+        "education": "Education & Degrees",
+        "skills": "Technical & Core Skills",
+        "projects": "Key Projects",
+        "certifications": "Certifications & Licenses",
+    }
+    weights = {"summary": 10, "experience": 30, "education": 20, "skills": 25, "projects": 15, "certifications": 0}
+    found = set()
+    for line in text.splitlines():
+        normalized = _normalize_heading(line)
+        for section, names in SECTION_ALIASES.items():
+            if normalized in names:
+                found.add(section)
 
     sections = {
-        "summary": {
-            "title": "Professional Summary / Objective",
-            "present": bool(re.search(r'\b(summary|objective|about me|profile|career summary)\b', text_lower)),
-            "weight": 10
-        },
-        "experience": {
-            "title": "Work Experience / History",
-            "present": bool(re.search(r'\b(experience|work history|employment|career)\b', text_lower)),
-            "weight": 30
-        },
-        "education": {
-            "title": "Education & Degrees",
-            "present": bool(re.search(r'\b(education|academic|degree|university|college|btech|mtech|bs|ms)\b', text_lower)),
-            "weight": 20
-        },
-        "skills": {
-            "title": "Technical & Core Skills",
-            "present": bool(re.search(r'\b(skills|technologies|technical proficiencies|competencies)\b', text_lower)),
-            "weight": 25
-        },
-        "projects": {
-            "title": "Key Projects",
-            "present": bool(re.search(r'\b(projects|personal projects|portfolio|key achievements)\b', text_lower)),
-            "weight": 15
-        }
+        key: {"title": titles[key], "present": key in found, "weight": weights[key]}
+        for key in SECTION_ALIASES
     }
 
     present_count = sum(1 for s in sections.values() if s["present"])
@@ -359,10 +414,10 @@ def audit_sections(text):
 def extract_quantified_metrics(text):
     """Find metrics (numbers, percentages, dollar values, multipliers)."""
     patterns = [
-        r'\b\d+%\b',
+        r'(?<!\w)\d+(?:\.\d+)?\s*%(?!\w)',
         r'\$\d+(?:,\d+)*(?:\.\d+)?(?:\s*[kKmMbB])?\b',
         r'\b\d+x\b',
-        r'\b\d+\s*(?:\+\s*)?(?:users|clients|customers|projects|requests|ms|seconds|minutes|hours|percent|members|developers)\b'
+        r'\b\d+\s*(?:\+\s*)?(?:users|clients|customers|projects|requests|ms|seconds|minutes|hours|percent|members|developers|revenue|transactions|deployments|incidents|tickets)\b'
     ]
 
     found_metrics = []
@@ -399,109 +454,63 @@ def parse_bit_by_bit(text):
     name = clean_candidate_name(text)
     contact = check_contact_info(text)
     
-    # Location regex (ensuring non-tech terms)
-    loc_match = re.search(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),\s*([A-Z]{2}|[A-Z][a-z]+)\b', text)
-    location = "Not specified"
-    if loc_match:
-        cand_loc = loc_match.group(0)
-        if not re.search(r'(python|django|java|react|node|express|sql|html|css)', cand_loc, re.I):
-            location = cand_loc
-
+    location_match = re.search(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),\s*([A-Z]{2}|[A-Z][a-z]+)\b', text)
+    location = location_match.group(0) if location_match else "Not extracted"
     text_lower = text.lower()
-
-    # Section Slicing Helpers
-    summary_match = re.search(r'(?:summary|profile|objective|about me)([\s\S]{30,400}?)(?:experience|education|skills|projects|$)', text_lower)
-    exp_block = re.search(r'(?:experience|employment|work history|career)([\s\S]{30,1200}?)(?:education|skills|projects|certifications|$)', text_lower)
-    edu_block = re.search(r'(?:education|academic|degrees)([\s\S]{30,600}?)(?:skills|projects|experience|certifications|$)', text_lower)
-    proj_block = re.search(r'(?:projects|personal projects|key projects|portfolio)([\s\S]{30,800}?)(?:skills|education|experience|certifications|$)', text_lower)
-
-    # 1. Work Roles Bit-by-Bit
-    work_roles = []
-    role_matches = re.findall(
-        r'([A-Z][a-zA-Z\s\/]{2,35}(?:Engineer|Developer|Manager|Architect|Analyst|Lead|Specialist|Consultant|Intern|Full Stack|Backend|Frontend))\s*(?:\||-|@)?\s*([A-Z0-9\s.,&]{2,30})?\s*\(?(\d{4}\s*(?:–|-|to)\s*(?:\d{4}|Present|Current))\)?',
-        text
-    )
-
-    for r in role_matches[:4]:
-        title = r[0].strip()
-        company = r[1].strip() if r[1] else "Tech Company"
-        dates = r[2].strip()
-        work_roles.append({
-            "title": title,
-            "company": company,
-            "dates": dates,
-            "bullet_count": len(re.findall(r'•|-|\*', exp_block.group(1) if exp_block else text)),
-            "role_score": 85 if "Present" in dates or "202" in dates else 75
-        })
-
-    if not work_roles:
-        if exp_block or re.search(r'(full stack|developer|engineer|built|deployed)', text_lower):
-            work_roles.append({
-                "title": "Full Stack / Software Developer",
-                "company": "Professional Experience",
-                "dates": "Verified Career Period",
-                "bullet_count": max(len(re.findall(r'•|-|\*', exp_block.group(1) if exp_block else text)), 3),
-                "role_score": 80
-            })
-
-    # 2. Education Entries Bit-by-Bit
-    education_entries = []
-    edu_text_source = edu_block.group(1) if edu_block else text
-    edu_matches = re.findall(
-        r'(B\.?Tech|M\.?Tech|B\.?E\.?|B\.?S\.?|M\.?S\.?|Ph\.?D|Bachelor|Master|Diploma|Higher Secondary)\s*(?:in|of)?\s*([A-Za-z\s&]{3,40})?(?:\||-|@|,)?\s*([A-Za-z\s]{3,40}University|[A-Za-z\s]{3,40}College|[A-Za-z\s]{3,40}Institute|[A-Za-z\s]{3,40}School)?\s*\(?(\d{4}(?:\s*–\s*\d{4})?)?\)?',
-        edu_text_source,
-        re.IGNORECASE
-    )
-
-    for e in edu_matches[:2]:
-        deg = e[0].strip()
-        major = e[1].strip() if e[1] else "Computer Science & Engineering"
-        school = e[2].strip() if e[2] else "Academic Institution"
-        year = e[3].strip() if e[3] else "Graduated"
-        education_entries.append({
-            "degree": deg.upper(),
-            "major": major.title(),
-            "institution": school.title(),
-            "year": year
-        })
-
-    if not education_entries and re.search(r'(education|degree|university|btech|bs|college|b\.e)', text_lower):
-        education_entries.append({
-            "degree": "BACHELOR OF TECHNOLOGY / SCIENCE",
-            "major": "Computer Science & Engineering",
-            "institution": "University / Institute",
-            "year": "Verified"
-        })
-
-    # 3. Projects Bit-by-Bit
-    project_entries = []
-    proj_source = proj_block.group(1) if proj_block else text
-    
-    proj_titles = re.findall(r'(?:•|-|\*)\s*([A-Z0-9\s\-_]{3,35}):', proj_source)
-    if not proj_titles:
-        proj_titles = re.findall(r'(?:Project|Key Project):\s*([A-Za-z0-9\s\-_]{3,35})', proj_source, re.IGNORECASE)
-
-    for p in proj_titles[:4]:
-        project_entries.append({
-            "title": p.strip(),
-            "status": "Verified Technical Project"
-        })
-
-    if not project_entries and (proj_block or re.search(r'(project|chat|app|platform)', text_lower)):
-        project_entries.append({
-            "title": "Full Stack Web & Realtime Applications",
-            "status": "Verified Technical Portfolio"
-        })
-
+    blocks = split_resume_sections(text)
     sections, _, _ = audit_sections(text)
-    
+
+    # Keep only details supported by text in the corresponding resume section.
+    work_roles = []
+    date_pattern = r'(?:19\d{2}|20\d{2})\s*(?:–|-|to)\s*(?:(?:19|20)\d{2}|present|current)'
+    experience_lines = blocks["experience"].splitlines()
+    role_line_indexes = []
+    for line_index, line in enumerate(experience_lines):
+        if not re.search(date_pattern, line, re.IGNORECASE):
+            continue
+        parts = re.split(r'\s*[|@]\s*', line, maxsplit=1)
+        title = re.sub(date_pattern, "", parts[0], flags=re.IGNORECASE).strip(" ()-–")
+        if not re.search(r'\b(engineer|developer|manager|architect|analyst|lead|specialist|consultant|intern|designer|scientist|director)\b', title, re.I):
+            continue
+        company = re.sub(date_pattern, "", parts[1], flags=re.IGNORECASE).strip(" ()-–") if len(parts) > 1 else "Not extracted"
+        role_line_indexes.append(line_index)
+        work_roles.append({
+            "title": title or "Not extracted",
+            "company": company or "Not extracted",
+            "dates": re.search(date_pattern, line, re.IGNORECASE).group(0),
+            "bullet_count": 0,
+        })
+    for role_index, line_index in enumerate(role_line_indexes):
+        next_role_line = role_line_indexes[role_index + 1] if role_index + 1 < len(role_line_indexes) else len(experience_lines)
+        work_roles[role_index]["bullet_count"] = sum(
+            bool(re.match(r'^\s*(?:[•●▪*-])\s+\S', item))
+            for item in experience_lines[line_index + 1:next_role_line]
+        )
+    work_roles = work_roles[:8]
+
+    education_entries = []
+    degree_pattern = r'\b(B\.?\s?Tech|M\.?\s?Tech|B\.?\s?E\.?|B\.?\s?S\.?|M\.?\s?S\.?|Ph\.?D\.?|Bachelor(?:\s+of\s+\w+)?|Master(?:\s+of\s+\w+)?|Associate(?:\s+Degree)?|Diploma)\b'
+    for line in blocks["education"].splitlines():
+        degree = re.search(degree_pattern, line, re.IGNORECASE)
+        if degree:
+            education_entries.append({"degree": degree.group(0).strip(), "details": line.strip()})
+    education_entries = education_entries[:6]
+
+    project_entries = []
+    for line in blocks["projects"].splitlines():
+        item = re.sub(r'^\s*[•●▪*-]\s*', '', line).strip()
+        if item:
+            title = item.split(":", 1)[0].strip()
+            project_entries.append({"title": title[:100] or "Project entry detected"})
+    project_entries = project_entries[:8]
+
     sec_scores = {
-        "contact_score": 100 if (contact["has_email"] and contact["has_phone"]) else 60,
-        "summary_score": 90 if (sections["summary"]["present"] or summary_match) else 30,
-        "experience_score": 95 if (sections["experience"]["present"] or exp_block) else 40,
-        "education_score": 90 if (sections["education"]["present"] or education_entries) else 50,
-        "skills_score": 90 if sections["skills"]["present"] else 30,
-        "projects_score": 85 if (sections["projects"]["present"] or project_entries) else 40
+        "contact_score": 100 if (contact["has_email"] and contact["has_phone"]) else 0,
+        "summary_score": 100 if sections["summary"]["present"] else 0,
+        "experience_score": 100 if sections["experience"]["present"] else 0,
+        "education_score": 100 if sections["education"]["present"] else 0,
+        "skills_score": 100 if sections["skills"]["present"] else 0,
+        "projects_score": 100 if sections["projects"]["present"] else 0,
     }
 
     return {
@@ -522,7 +531,7 @@ def parse_bit_by_bit(text):
 
 
 
-# ---------- 7-PILLAR ENTERPRISE ATS AUDITORS ----------
+# ---------- RESUME SIGNAL HELPERS ----------
 def audit_career_path(text):
     """Evaluates Career Path (25 Pts Max): years experience, title progression, recency."""
     text_lower = text.lower()
@@ -587,7 +596,7 @@ def audit_hobbies_and_culture(text):
 
 def audit_layout_safety(text):
     """
-    Audits document for Workday/Taleo parsing traps:
+    Checks extracted text for common readability and parsing concerns:
     - Non-standard bullet characters (➢, ➔, ★, ■, ✔, etc.)
     - Canonical heading compliance
     - Contact placement hygiene
@@ -596,16 +605,8 @@ def audit_layout_safety(text):
     bad_symbols = ['➢', '➔', '★', '■', '✔', '►', '❖', '✦']
     found_bad_symbols = [s for s in bad_symbols if s in text]
     
-    lines = [l.strip().lower() for l in text.split('\n') if l.strip()]
-    canonical_headers = ["work experience", "experience", "education", "skills", "technical skills", "projects", "key projects", "summary", "professional summary"]
-    
-    found_canonical = []
-    for line in lines:
-        for ch in canonical_headers:
-            if ch == line or line.startswith(ch):
-                found_canonical.append(ch.title())
-    
-    found_canonical = list(set(found_canonical))
+    sections, _, _ = audit_sections(text)
+    found_canonical = [section["title"] for section in sections.values() if section["present"]]
     
     contact = check_contact_info(text)
     word_count = len(text.split())
@@ -634,45 +635,33 @@ def audit_layout_safety(text):
 
 
 def simulate_boolean_search(text, job_role="fullstack", job_description=""):
-    """
-    Simulates recruiter Boolean query evaluation (Workday/Greenhouse standard).
-    Constructs multi-clause Boolean query and checks candidate qualification.
-    """
-    text_lower = text.lower()
-    
-    # Dynamic boolean query definition based on role
+    """Build an illustrative Boolean query from the selected role or supplied JD."""
+    target_terms = []
+    if job_description and job_description.strip():
+        for category, skills in SKILLS_TAXONOMY.items():
+            for skill in skills:
+                if skill != "go" and contains_term(job_description, skill):
+                    target_terms.append((skill, category))
+    if not target_terms:
+        role = JOB_TEMPLATES.get(job_role, JOB_TEMPLATES["fullstack"])
+        for skill in role["core_skills"]:
+            category = next((name for name, skills in SKILLS_TAXONOMY.items() if skill in skills), "Target role")
+            target_terms.append((skill, category))
+
+    groups = {}
+    for term, category in target_terms:
+        groups.setdefault(category, [])
+        if term not in groups[category]:
+            groups[category].append(term)
     clauses = [
-        {
-            "id": "seniority",
-            "label": "Role & Seniority",
-            "boolean": '("Senior" OR "Lead" OR "Developer" OR "Engineer" OR "Architect" OR "Specialist")',
-            "terms": ["senior", "lead", "developer", "engineer", "architect", "specialist"]
-        },
-        {
-            "id": "primary_tech",
-            "label": "Core Programming",
-            "boolean": '("Python" OR "JavaScript" OR "TypeScript" OR "Java" OR "C#" OR "Golang")',
-            "terms": ["python", "javascript", "typescript", "java", "c#", "golang", "go"]
-        },
-        {
-            "id": "frameworks",
-            "label": "Frameworks & Architecture",
-            "boolean": '("React" OR "Django" OR "FastAPI" OR "Node.js" OR "Next.js" OR "Express")',
-            "terms": ["react", "django", "fastapi", "node.js", "node", "next.js", "express"]
-        },
-        {
-            "id": "cloud_db",
-            "label": "Cloud & Data Systems",
-            "boolean": '("AWS" OR "Docker" OR "Kubernetes" OR "PostgreSQL" OR "SQL" OR "Redis")',
-            "terms": ["aws", "docker", "kubernetes", "postgresql", "postgres", "sql", "redis"]
-        }
+        {"label": category, "terms": terms,
+         "boolean": "(" + " OR ".join('"' + term + '"' for term in terms) + ")"}
+        for category, terms in groups.items() if terms
     ]
-    
     matched_clauses = []
     missing_clauses = []
-    
     for c in clauses:
-        matched_term = next((t for t in c["terms"] if re.search(r'\b' + re.escape(t) + r'\b', text_lower)), None)
+        matched_term = next((term for term in c["terms"] if contains_term(text, term)), None)
         if matched_term:
             matched_clauses.append({
                 "label": c["label"],
@@ -685,12 +674,12 @@ def simulate_boolean_search(text, job_role="fullstack", job_description=""):
                 "boolean": c["boolean"]
             })
             
-    pass_rate = round((len(matched_clauses) / len(clauses)) * 100, 1)
-    
+    pass_rate = round((len(matched_clauses) / len(clauses)) * 100, 1) if clauses else 0
     full_boolean_query = " AND ".join([c["boolean"] for c in clauses])
-    
     return {
         "pass_rate": pass_rate,
+        "matched_term_count": sum(1 for term, _ in target_terms if contains_term(text, term)),
+        "clause_count": len(clauses),
         "is_qualified": pass_rate >= 75.0,
         "full_boolean_query": full_boolean_query,
         "matched_clauses": matched_clauses,
@@ -700,8 +689,7 @@ def simulate_boolean_search(text, job_role="fullstack", job_description=""):
 
 def audit_keyword_density_and_tfidf(text, matched_skills):
     """
-    Checks for keyword density and keyword stuffing protection.
-    Flag terms exceeding 4.5% density to protect candidate from ATS penalty algorithms.
+    Reports repeated target terms as a review heuristic; it does not predict ATS penalties.
     """
     words = tokenize(clean_text(text))
     total_words = max(len(words), 1)
@@ -736,14 +724,7 @@ def audit_keyword_density_and_tfidf(text, matched_skills):
 # ---------- ATS MAIN SCORING ENGINE ----------
 def calculate_ats_score(resume_text, job_description="", job_role="fullstack"):
     """
-    Comprehensive 7-Pillar Enterprise ATS Analysis Engine (100 Points Total):
-    1. Career & Experience Path (25 Points)
-    2. Technical Skills & Tools Match (25 Points)
-    3. Projects & Portfolio Quality (15 Points)
-    4. Education & Certifications (15 Points)
-    5. Soft Skills & Leadership (10 Points)
-    6. Hobbies, Open Source & Culture Fit (5 Points)
-    7. Formatting & Readability (5 Points)
+    Score evidence found in extracted text with transparent weighted checks.
     """
     if not resume_text or len(resume_text.strip()) < 10:
         return {
@@ -751,279 +732,156 @@ def calculate_ats_score(resume_text, job_description="", job_role="fullstack"):
             "ats_score": 0
         }
 
-    clean_resume = clean_text(resume_text)
-    resume_tokens = tokenize(clean_resume)
     word_count = len(resume_text.split())
+    extraction_review = review_extracted_text(resume_text)
 
     # 1. SKILL TAXONOMY MATCHING (Pillar 2: Tech Skills - 25 Pts)
     matched_skills = []
-    all_known_skills = []
     for category, skill_list in SKILLS_TAXONOMY.items():
         for skill in skill_list:
-            all_known_skills.append((skill, category))
-            pattern = r'\b' + re.escape(skill) + r'\b'
-            if re.search(pattern, clean_resume):
+            if skill == "go":
+                continue  # Too ambiguous to count safely without an explicit language label.
+            if contains_term(resume_text, skill):
                 matched_skills.append({
                     "name": skill.title() if len(skill) > 3 else skill.upper(),
                     "category": category,
                     "raw": skill
                 })
 
-    matched_skill_names = {s["raw"] for s in matched_skills}
+    # The taxonomy contains aliases and category overlap; expose one row per term.
+    unique_skills = {}
+    for skill in matched_skills:
+        unique_skills.setdefault(skill["raw"], skill)
+    matched_skills = list(unique_skills.values())
 
-    # Target Keywords Determination
-    target_skills = []
-    if job_description and len(job_description.strip()) > 20:
-        clean_jd = clean_text(job_description)
-        jd_tokens = tokenize(clean_jd)
-
-        for skill, cat in all_known_skills:
-            if re.search(r'\b' + re.escape(skill) + r'\b', clean_jd):
-                target_skills.append({"name": skill, "category": cat, "importance": "High"})
-
-        jd_freq = Counter(jd_tokens)
-        top_jd_words = [w for w, _ in jd_freq.most_common(20)]
-        for w in top_jd_words:
-            if w not in [ts["name"] for ts in target_skills] and len(w) > 3:
-                target_skills.append({"name": w, "category": "JD Keyword", "importance": "Medium"})
-    else:
-        template = JOB_TEMPLATES.get(job_role, JOB_TEMPLATES["fullstack"])
-        for s in template["core_skills"]:
-            target_skills.append({"name": s, "category": "Target Role Skill", "importance": "High"})
-
-    target_skill_names = {ts["name"].lower() for ts in target_skills}
-    matched_target_count = sum(1 for ts in target_skill_names if ts in matched_skill_names)
-    total_targets = max(len(target_skill_names), 1)
-
-    pillar2_skills_pts = min((matched_target_count / total_targets) * 25.0, 25.0)
-
-    # Missing Keywords
-    missing_keywords = []
-    for ts in target_skills:
-        if ts["name"].lower() not in matched_skill_names:
-            missing_keywords.append({
-                "name": ts["name"].title() if len(ts["name"]) > 3 else ts["name"].upper(),
-                "category": ts["category"],
-                "importance": ts.get("importance", "High")
-            })
-
-    seen_missing = set()
+    # This is a general resume quality score, not a job-match score. Skill signals
+    # are capped at 10 points so one technical taxonomy cannot dominate the result.
+    skill_count = len(matched_skills)
+    skills_points = (10 if skill_count >= 10 else 8 if skill_count >= 7 else
+                     6 if skill_count >= 4 else 3 if skill_count >= 1 else 0)
+    # A generic resume review has no target job, so it must not call role-specific
+    # tools "missing" or encourage candidates to add skills they may not have.
     unique_missing = []
-    for mk in missing_keywords:
-        if mk["name"].lower() not in seen_missing:
-            seen_missing.add(mk["name"].lower())
-            unique_missing.append(mk)
 
-    # PILLAR 1: Career & Experience Path (25 Pts Max)
-    pillar1_career_pts, yrs_exp, has_progression, is_recent = audit_career_path(resume_text)
-
-    # PILLAR 3: Projects & Portfolio Quality (15 Pts Max)
-    sections, structure_score, _ = audit_sections(resume_text)
-    metrics_found = extract_quantified_metrics(resume_text)
-    has_projects_sec = sections["projects"]["present"]
-    pillar3_projects_pts = 15.0 if (has_projects_sec and len(metrics_found) >= 2) else 10.0 if has_projects_sec else 6.0
-
-    # PILLAR 4: Education & Certifications (15 Pts Max)
-    pillar4_edu_cert_pts, found_certs, has_degree = audit_certifications(resume_text)
-
-    # PILLAR 5: Soft Skills & Leadership (10 Pts Max)
-    verbs_found = extract_action_verbs(resume_text)
-    soft_skills_count = sum(1 for s in matched_skills if s["category"] == "Soft Skills")
-    pillar5_soft_skills_pts = min((len(verbs_found) * 1.0) + (soft_skills_count * 1.5), 10.0)
-
-    # PILLAR 6: Hobbies, Open Source & Culture (5 Pts Max)
-    pillar6_hobbies_pts, found_hobbies, has_opensource = audit_hobbies_and_culture(resume_text)
-
-    # PILLAR 7: Formatting & Readability (5 Pts Max)
+    blocks = split_resume_sections(resume_text)
+    verbs_found = extract_action_verbs(blocks["experience"] + "\n" + blocks["projects"])
     contact_info = check_contact_info(resume_text)
-    contact_pts = 3.0 if (contact_info["has_email"] and contact_info["has_phone"]) else 1.5
-    length_pts = 2.0 if (300 <= word_count <= 900) else 1.0
-    pillar7_formatting_pts = contact_pts + length_pts
+    sections, _, _ = audit_sections(resume_text)
+    bad_symbols = ['➢', '➔', '★', '■', '✔', '►', '❖', '✦']
+    found_bad_symbols = [symbol for symbol in bad_symbols if symbol in resume_text]
+    canonical_count = sum(section["present"] for section in sections.values())
 
-    # 4. BUZZWORDS & PASSIVE VOICE AUDIT
-    found_buzzwords, found_passive = detect_buzzwords_and_passive(resume_text)
-    buzzword_penalty = min(len(found_buzzwords) * 2.0, 8.0)
-    passive_penalty = min(len(found_passive) * 2.5, 8.0)
+    # Each scored check has a fixed weight; the active weights sum to 100.
+    resume_checks = []
+    def add_check(*args, **kwargs):
+        resume_checks.append(_resume_check(*args, **kwargs))
 
-    # TOTAL 7-PILLAR ENTERPRISE ATS SCORE (Out of 100)
-    raw_total_score = (
-        pillar1_career_pts +
-        pillar2_skills_pts +
-        pillar3_projects_pts +
-        pillar4_edu_cert_pts +
-        pillar5_soft_skills_pts +
-        pillar6_hobbies_pts +
-        pillar7_formatting_pts
-    )
+    add_check("contact_email", "Contact", "Email address", 3 if contact_info["has_email"] else 0, 3,
+              "Email address detected." if contact_info["has_email"] else "No email address was detected in the extracted text.",
+              "Add a plain-text email address near the top of the resume." if not contact_info["has_email"] else "")
+    add_check("contact_phone", "Contact", "Phone number", 2 if contact_info["has_phone"] else 0, 2,
+              "Phone number detected." if contact_info["has_phone"] else "No phone number was detected in the extracted text.",
+              "Add a reachable phone number in plain text near your email." if not contact_info["has_phone"] else "")
 
-    total_ats_score = raw_total_score - buzzword_penalty - passive_penalty
-    total_ats_score = round(max(5, min(total_ats_score, 99)), 1)
+    section_points = {"summary": 4, "experience": 4, "skills": 4, "projects": 5}
+    for key, points in section_points.items():
+        sec = sections[key]
+        recommendation = "Add a clearly labeled '" + sec["title"] + "' section." if not sec["present"] else ""
+        add_check("section_" + key, "Resume sections", sec["title"], points if sec["present"] else 0, points,
+                  "Standalone section heading detected." if sec["present"] else "No standalone section heading detected.", recommendation)
 
+    skill_names = [item["name"] for item in matched_skills]
+    keyword_finding = f"Detected {skill_count} recognized skill or competency terms."
+    if skill_names:
+        keyword_finding += " Examples: " + ", ".join(skill_names[:10]) + "."
+    keyword_recommendation = ("Use a clearly labeled Skills or Core Competencies section for relevant capabilities. "
+                              "Only list skills you can support with real experience.") if skill_count < 7 else ""
+    add_check("resume_skills", "Skills", "Skills and competencies", skills_points, 10, keyword_finding, keyword_recommendation)
+
+    experience_lines = blocks["experience"].splitlines()
+    role_title_pattern = r'\b(engineer|developer|manager|architect|analyst|lead|specialist|consultant|intern|designer|scientist|director|teacher|nurse|accountant|coordinator|administrator|technician|therapist|recruiter|executive|supervisor|researcher|editor|writer|attorney|counsel|chef|electrician|mechanic|representative|strategist)\b'
+    date_pattern = r'\b(?:19|20)\d{2}\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{4}\b'
+    dated_role_lines = []
+    for line_index, line in enumerate(experience_lines):
+        adjacent = " ".join(experience_lines[max(0, line_index - 1):line_index + 2])
+        if re.search(role_title_pattern, line, re.I) and re.search(date_pattern, adjacent, re.I):
+            dated_role_lines.append(line)
+    bullet_lines = [line for line in experience_lines if re.match(r'^\s*(?:[•●▪*-])\s+\S', line)]
+    exp_heading_points = 5 if sections["experience"]["present"] else 0
+    date_points = 14 if len(dated_role_lines) >= 2 else 8 if dated_role_lines else 0
+    bullet_points = 14 if len(bullet_lines) >= 5 else 10 if len(bullet_lines) >= 3 else 4 if bullet_lines else 0
+    add_check("experience_section", "Experience evidence", "Work history section", exp_heading_points, 5,
+              "Work history heading found." if exp_heading_points else "A work history heading was not detected.",
+              "Use a standard heading such as 'Work Experience' or 'Professional Experience'." if not exp_heading_points else "")
+    add_check("experience_dates", "Experience evidence", "Role titles and dates", date_points, 14,
+              f"Found {len(dated_role_lines)} experience line(s) with a recognizable role title and year.",
+              "Put each job title, employer, and employment dates on clearly readable lines." if date_points < 14 else "")
+    add_check("experience_bullets", "Experience evidence", "Role accomplishments", bullet_points, 14,
+              f"Found {len(bullet_lines)} bullet-style line(s) under Work Experience.",
+              "Add concise accomplishment bullets to relevant roles; describe your own actions." if bullet_points < 14 else "")
+
+    scoped_metrics = extract_quantified_metrics(blocks["experience"] + "\n" + blocks["projects"])
+    metric_points = 12 if len(scoped_metrics) >= 3 else 8 if len(scoped_metrics) == 2 else 4 if scoped_metrics else 0
+    verb_points = 10 if len(verbs_found) >= 5 else 7 if len(verbs_found) >= 3 else 4 if verbs_found else 0
+    add_check("measurable_results", "Achievement quality", "Measured outcomes", metric_points, 12,
+              f"Found {len(scoped_metrics)} measurable result(s) in experience or project sections.",
+              "Where you have reliable data, state scale, time saved, revenue, quality, or performance change. Never invent metrics." if metric_points < 12 else "")
+    add_check("action_verbs", "Achievement quality", "Specific action language", verb_points, 10,
+              f"Detected {len(verbs_found)} distinct action verb(s).",
+              "Start accomplishment bullets with precise verbs such as built, analyzed, improved, or delivered." if verb_points < 10 else "")
+
+    education_block = blocks["education"]
+    degree_pattern = r'\b(B\.?\s?Tech|M\.?\s?Tech|B\.?\s?E\.?|B\.?\s?S\.?|M\.?\s?S\.?|Ph\.?D\.?|Bachelor|Master|Associate|Diploma)\b'
+    found_degree_evidence = bool(re.search(degree_pattern, education_block, re.I))
+    cert_patterns = (r'aws certified', r'google cloud certified', r'microsoft certified', r'certified kubernetes administrator', r'\b(?:pmp|cissp|ccna|cka|cks)\b', r'comptia\s+[a-z+]+' )
+    found_certs = sorted({match.group(0).upper() for pattern in cert_patterns for match in re.finditer(pattern, blocks["certifications"], re.I)})
+    credential_finding = "Education entry detected; education is optional and does not affect the score." if found_degree_evidence else "No education entry detected; education and certifications are optional and do not affect the score."
+    if found_certs:
+        credential_finding += " Certification(s) found: " + ", ".join(found_certs[:5]) + "."
+    add_check("credentials", "Optional information", "Education and certifications", 0, 0, credential_finding)
+
+    length_points = 5 if 150 <= word_count <= 1200 else 3 if 100 <= word_count < 150 or 1200 < word_count <= 1800 else 0
+    bullet_safety_points = 3 if not found_bad_symbols else 0
+    heading_points = 5 if canonical_count >= 4 else 3 if canonical_count >= 3 else 0
+    add_check("resume_length", "Parsing and readability", "Resume length", length_points, 5,
+              f"Extracted {word_count} words; length is a broad readability signal, not a hard ATS rule.",
+              "Review for missing detail or repetition; keep length appropriate to your experience and target market." if length_points < 5 else "")
+    add_check("bullet_format", "Parsing and readability", "Bullet characters", bullet_safety_points, 3,
+              "No flagged decorative bullet symbols found." if not found_bad_symbols else "Flagged symbols: " + " ".join(found_bad_symbols) + ".",
+              "Replace decorative symbols with plain bullets or simple hyphens." if found_bad_symbols else "")
+    add_check("section_headings", "Parsing and readability", "Recognizable section headings", heading_points, 5,
+              f"Detected {canonical_count} recognized section heading(s).",
+              "Use plain, conventional headings and keep each heading on its own line." if heading_points < 5 else "")
+
+    total_ats_score = round(sum(item["earned"] for item in resume_checks), 1)
     if total_ats_score >= 90: grade = "A+"
     elif total_ats_score >= 80: grade = "A"
     elif total_ats_score >= 70: grade = "B"
     elif total_ats_score >= 55: grade = "C"
     else: grade = "D"
-
-    # STRENGTHS & CRITICAL FIXES GENERATOR
-    strengths = []
-    critical_fixes = []
-
-    if contact_info["has_email"] and contact_info["has_phone"]:
-        strengths.append("Clear contact details (email & phone) provided.")
-    else:
-        critical_fixes.append("Missing essential contact details (Email or Phone number).")
-
-    if contact_info["has_linkedin"]:
-        strengths.append("Professional LinkedIn profile link included.")
-    else:
-        critical_fixes.append("Add your LinkedIn profile link to improve recruiter trust.")
-
-    if pillar2_skills_pts >= 18:
-        strengths.append(f"Strong tech keyword density ({len(matched_skills)} core skills detected).")
-    else:
-        critical_fixes.append("Low technical skill count. Add target role keywords to your skills section.")
-
-    if found_certs:
-        strengths.append(f"Verified certifications: {', '.join(found_certs[:2])}.")
-    else:
-        critical_fixes.append("Add professional certifications (e.g., AWS, Scrum, Kubernetes) to boost recruiter ranking.")
-
-    if found_hobbies or has_opensource:
-        strengths.append("Well-rounded profile with open-source/hobby engagement.")
-    else:
-        critical_fixes.append("Add a 'Hobbies & Extracurriculars' or 'Open Source' section to improve culture fit score.")
-
-    bullet_suggestions = generate_bullet_suggestions(unique_missing, job_role=job_role)
-    bit_by_bit_parsed = parse_bit_by_bit(resume_text)
-
-    # Advanced Enterprise ATS Auditing Engines
-    layout_safety = audit_layout_safety(resume_text)
-    boolean_search = simulate_boolean_search(resume_text, job_role=job_role, job_description=job_description)
-    keyword_density = audit_keyword_density_and_tfidf(resume_text, matched_skills)
-
-    seven_pillar_matrix = {
-        "pillar1_career": {"name": "Career & Experience Path", "score": round(pillar1_career_pts, 1), "max": 25, "years_detected": yrs_exp, "progression": has_progression},
-        "pillar2_skills": {"name": "Technical Skills & Tools", "score": round(pillar2_skills_pts, 1), "max": 25, "skills_count": len(matched_skills)},
-        "pillar3_projects": {"name": "Projects & Portfolio Quality", "score": round(pillar3_projects_pts, 1), "max": 15, "has_projects": has_projects_sec},
-        "pillar4_education_certs": {"name": "Education & Certifications", "score": round(pillar4_edu_cert_pts, 1), "max": 15, "certs": found_certs, "has_degree": has_degree},
-        "pillar5_soft_skills": {"name": "Soft Skills & Leadership", "score": round(pillar5_soft_skills_pts, 1), "max": 10, "action_verbs_count": len(verbs_found)},
-        "pillar6_hobbies_culture": {"name": "Hobbies & Culture Fit", "score": round(pillar6_hobbies_pts, 1), "max": 5, "hobbies": found_hobbies, "has_opensource": has_opensource},
-        "pillar7_formatting": {"name": "Formatting & Readability", "score": round(pillar7_formatting_pts, 1), "max": 5, "word_count": word_count}
-    }
-
-    # Crystal-Clear Mathematical Score Audit Log
-    score_audit_log = [
-        {
-            "category": "Career & Work Experience",
-            "earned": round(pillar1_career_pts, 1),
-            "max": 25,
-            "status": "Pass" if pillar1_career_pts >= 18 else "Improve",
-            "details": f"Detected {yrs_exp}+ years experience. {'Senior trajectory title matched.' if has_progression else 'Standard title trajectory.'}"
-        },
-        {
-            "category": "Technical Skills & Keywords",
-            "earned": round(pillar2_skills_pts, 1),
-            "max": 25,
-            "status": "Pass" if pillar2_skills_pts >= 18 else "Improve",
-            "details": f"Matched {matched_target_count} / {total_targets} required role keywords ({len(matched_skills)} total tech skills found)."
-        },
-        {
-            "category": "Projects & Portfolio Quality",
-            "earned": round(pillar3_projects_pts, 1),
-            "max": 15,
-            "status": "Pass" if pillar3_projects_pts >= 12 else "Improve",
-            "details": f"{'Dedicated project section present' if has_projects_sec else 'Add dedicated key projects section'}. Found {len(metrics_found)} quantified impact metrics."
-        },
-        {
-            "category": "Education & Certifications",
-            "earned": round(pillar4_edu_cert_pts, 1),
-            "max": 15,
-            "status": "Pass" if pillar4_edu_cert_pts >= 10 else "Improve",
-            "details": f"{'Degree verified.' if has_degree else 'Academic degree pending.'} Certifications found: {', '.join(found_certs[:2]) if found_certs else 'None'}"
-        },
-        {
-            "category": "Soft Skills & Action Verbs",
-            "earned": round(pillar5_soft_skills_pts, 1),
-            "max": 10,
-            "status": "Pass" if pillar5_soft_skills_pts >= 7 else "Improve",
-            "details": f"Detected {len(verbs_found)} high-impact action verbs and leadership terms."
-        },
-        {
-            "category": "Culture Fit & Open Source",
-            "earned": round(pillar6_hobbies_pts, 1),
-            "max": 5,
-            "status": "Pass" if pillar6_hobbies_pts >= 3 else "Improve",
-            "details": f"{'Open source / GitHub engagement detected.' if has_opensource else 'Add open source or tech blog link.'}"
-        },
-        {
-            "category": "Formatting & Parser Safety",
-            "earned": round(pillar7_formatting_pts, 1),
-            "max": 5,
-            "status": "Pass" if pillar7_formatting_pts >= 4 else "Improve",
-            "details": f"Parser safety score: {layout_safety['parser_safety_score']}%. Email/Phone contact clean."
-        }
+    priority_checks = sorted((item for item in resume_checks if item["earned"] < item["max"] and item["recommendation"]),
+                             key=lambda item: (item["max"] - item["earned"], item["max"]), reverse=True)
+    recommendations = [
+        {"priority": "High" if item["max"] - item["earned"] >= 5 else "Medium", "check_id": item["id"],
+         "title": item["label"], "action": item["recommendation"], "evidence": item["finding"],
+         "points_available": round(item["max"] - item["earned"], 1)}
+        for item in priority_checks
     ]
-
-    if buzzword_penalty > 0:
-        score_audit_log.append({
-            "category": "Buzzword Penalty",
-            "earned": -round(buzzword_penalty, 1),
-            "max": 0,
-            "status": "Deduction",
-            "details": f"Deducted for overused terms: {', '.join(found_buzzwords[:3])}"
-        })
-
-    if passive_penalty > 0:
-        score_audit_log.append({
-            "category": "Passive Voice Penalty",
-            "earned": -round(passive_penalty, 1),
-            "max": 0,
-            "status": "Deduction",
-            "details": f"Deducted for passive phrases: {', '.join(found_passive[:2])}"
-        })
 
     return {
         "ats_score": total_ats_score,
         "score_grade": grade,
-        "seven_pillar_matrix": seven_pillar_matrix,
-        "score_audit_log": score_audit_log,
-        "layout_safety": layout_safety,
-        "boolean_search": boolean_search,
-        "keyword_density": keyword_density,
-
-        "score_breakdown": {
-            "skills_score": round((pillar2_skills_pts / 25.0) * 100, 1),
-            "structure_score": round((pillar7_formatting_pts / 5.0) * 100, 1),
-            "impact_score": round((pillar3_projects_pts / 15.0) * 100, 1),
-            "relevance_score": round((pillar1_career_pts / 25.0) * 100, 1)
-        },
         "parsed_resume": {
             "word_count": word_count,
             "character_count": len(resume_text),
             "contact_info": contact_info,
-            "preview_text": resume_text,
             "full_extracted_text": resume_text
         },
+        "extraction_review": extraction_review,
 
-        "skills_matched": matched_skills,
-        "missing_keywords": unique_missing,
-        "section_audit": sections,
-        "impact_metrics": {
-            "action_verbs": verbs_found,
-            "verb_count": len(verbs_found),
-            "quantified_metrics": metrics_found,
-            "metric_count": len(metrics_found)
-        },
-        "quality_audit": {
-            "buzzwords_found": found_buzzwords,
-            "passive_phrases_found": found_passive
-        },
-        "bullet_suggestions": bullet_suggestions,
-        "bit_by_bit_parsed": bit_by_bit_parsed,
-        "strengths": strengths,
-        "critical_fixes": critical_fixes,
-        "job_template": JOB_TEMPLATES.get(job_role, JOB_TEMPLATES["fullstack"])
+        "resume_checks": resume_checks,
+        "recommendations": recommendations,
+        "score_disclaimer": "A general resume quality estimate based on extracted text, not a job match or a score from a specific ATS. Screening systems use different rules, and no score guarantees an interview.",
     }
 
 

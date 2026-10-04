@@ -17,22 +17,22 @@ const BooleanSearchSimulator = ({ booleanSearch }) => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-extrabold text-white">Recruiter Boolean Search Simulator</h3>
+              <h3 className="text-base font-extrabold text-white">Illustrative Boolean Keyword Query</h3>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
-                Workday / Taleo Algorithm
+                Simple text match
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Simulates automated recruiter query filters. Candidates passing &ge;75% appear in top applicant pools.
+              Shows whether at least one term from each role keyword group appears in the extracted resume text. This does not predict recruiter ranking.
             </p>
           </div>
         </div>
 
         <div className="flex items-center space-x-3">
           <div className="text-right">
-            <span className="text-xs font-semibold text-slate-400 block">Recruiter Match Qualification</span>
+            <span className="text-xs font-semibold text-slate-400 block">Keyword group coverage</span>
             <span className={`text-lg font-black ${is_qualified ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {pass_rate}% Qualified
+              {pass_rate}%
             </span>
           </div>
           <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
@@ -41,14 +41,14 @@ const BooleanSearchSimulator = ({ booleanSearch }) => {
               : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
           }`}>
             {is_qualified ? <ShieldCheck className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
-            {is_qualified ? 'SEARCH VISIBLE' : 'KNOCKOUT RISK'}
+            {is_qualified ? 'Most groups matched' : 'Review missing groups'}
           </div>
         </div>
       </div>
 
       {/* Boolean Query Preview Box */}
       <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 mb-6 font-mono text-xs text-slate-300 overflow-x-auto leading-relaxed">
-        <span className="text-slate-400 select-none">// Simulated Recruiter Boolean String:</span>
+        <span className="text-slate-400 select-none">// Example query from the selected role or job description:</span>
         <div className="mt-1 text-cyan-300 font-semibold break-all">
           {full_boolean_query}
         </div>
@@ -62,7 +62,7 @@ const BooleanSearchSimulator = ({ booleanSearch }) => {
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-xs font-bold text-emerald-400 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              Passed Boolean Filters ({matched_clauses.length})
+              Matched keyword groups ({matched_clauses.length})
             </h4>
           </div>
           <div className="space-y-2.5">
@@ -85,12 +85,12 @@ const BooleanSearchSimulator = ({ booleanSearch }) => {
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-xs font-bold text-rose-400 flex items-center gap-2">
               <XCircle className="w-4 h-4 text-rose-400" />
-              Missing Boolean Clauses ({missing_clauses.length})
+              Unmatched keyword groups ({missing_clauses.length})
             </h4>
           </div>
           {missing_clauses.length === 0 ? (
             <div className="p-4 text-center text-xs text-slate-400 bg-slate-800/30 rounded-lg">
-              🎉 Perfect! No missing Boolean clauses detected.
+              Every displayed keyword group has at least one text match.
             </div>
           ) : (
             <div className="space-y-2.5">

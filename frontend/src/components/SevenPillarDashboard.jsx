@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, Briefcase, Code, FolderGit2, GraduationCap, Users, Heart, Layout, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Award, Briefcase, Code, FolderGit2, GraduationCap, Users, ContactRound, Layout } from 'lucide-react';
 
 const SevenPillarDashboard = ({ sevenPillarMatrix }) => {
   if (!sevenPillarMatrix) return null;
@@ -9,15 +9,15 @@ const SevenPillarDashboard = ({ sevenPillarMatrix }) => {
       key: 'pillar1_career',
       icon: Briefcase,
       color: 'indigo',
-      badge: 'Weight 25 Pts',
-      details: (p) => `${p.years_detected ? `${p.years_detected}+ Yrs Exp` : 'Exp Detected'} • ${p.progression ? 'Senior Trajectory' : 'Standard Trajectory'}`
+      badge: 'Weight 20 Pts',
+      details: (p) => `${p.score} of ${p.max} experience evidence points`
     },
     {
       key: 'pillar2_skills',
       icon: Code,
       color: 'purple',
-      badge: 'Weight 25 Pts',
-      details: (p) => `${p.skills_count || 0} Technical Keywords Matched`
+      badge: 'Weight 35 Pts',
+      details: (p) => `${p.score} / ${p.max} points from target terms detected in the resume`
     },
     {
       key: 'pillar3_projects',
@@ -30,29 +30,29 @@ const SevenPillarDashboard = ({ sevenPillarMatrix }) => {
       key: 'pillar4_education_certs',
       icon: GraduationCap,
       color: 'amber',
-      badge: 'Weight 15 Pts',
-      details: (p) => `${p.has_degree ? 'Degree Verified' : 'Degree Pending'} • ${p.certs?.length ? `${p.certs.length} Certs` : 'No Certs'}`
+      badge: 'Weight 5 Pts',
+      details: (p) => `${p.has_degree ? 'Education entry found' : 'No degree entry found'} • ${p.certs?.length ? `${p.certs.length} certification(s)` : 'No named certification detected'}`
     },
     {
       key: 'pillar5_soft_skills',
       icon: Users,
       color: 'pink',
       badge: 'Weight 10 Pts',
-      details: (p) => `${p.action_verbs_count || 0} Action Verbs & Leadership Words`
+      details: (p) => `${p.action_verbs_count || 0} action verbs found in extracted text`
     },
     {
       key: 'pillar6_hobbies_culture',
-      icon: Heart,
+      icon: ContactRound,
       color: 'rose',
       badge: 'Weight 5 Pts',
-      details: (p) => `${p.hobbies?.length ? `${p.hobbies.slice(0, 2).join(', ')}` : 'No Hobbies'} • ${p.has_opensource ? 'Open Source' : 'Standard'}`
+      details: (p) => `${p.has_email ? 'Email found' : 'Email missing'} • ${p.has_phone ? 'Phone found' : 'Phone missing'}`
     },
     {
       key: 'pillar7_formatting',
       icon: Layout,
       color: 'teal',
-      badge: 'Weight 5 Pts',
-      details: (p) => `${p.word_count || 0} Words • Clean Header Format`
+      badge: 'Weight 10 Pts',
+      details: (p) => `${p.word_count || 0} words • readability checks`
     }
   ];
 
@@ -67,20 +67,20 @@ const SevenPillarDashboard = ({ sevenPillarMatrix }) => {
           </div>
           <div>
             <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-              7-Pillar Enterprise ATS Scoring Matrix
+              Weighted Resume Review
             </h3>
             <p className="text-xs text-slate-400">
-              Modeled after Workday, Greenhouse, Taleo & Lever candidate evaluation algorithms (100 Pts Total).
+              Score across job match, resume evidence, section coverage, contact details, and text readability.
             </p>
           </div>
         </div>
 
         <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-          7-Pillar Standard Active
+          100-point score
         </span>
       </div>
 
-      {/* 7 Pillar Cards Grid */}
+      {/* Weighted review categories */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {pillars.map((item) => {
           const pData = sevenPillarMatrix[item.key] || { name: 'Pillar', score: 0, max: 10 };

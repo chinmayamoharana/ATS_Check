@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Plus, Copy, Check, X, ArrowRight, Lightbulb } from 'lucide-react';
+import { Sparkles, Copy, Check, X, Lightbulb } from 'lucide-react';
 
-const BulletOptimizerModal = ({ isOpen, onClose, bulletSuggestions = [], onInsertBullet }) => {
+const BulletOptimizerModal = ({ isOpen, onClose, bulletSuggestions = [] }) => {
   const [copiedIndex, setCopiedIndex] = useState(null);
 
   if (!isOpen) return null;
@@ -24,10 +24,10 @@ const BulletOptimizerModal = ({ isOpen, onClose, bulletSuggestions = [], onInser
             </div>
             <div>
               <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                AI Bullet Point Generator & Optimizer
+                Bullet Point Writing Templates
               </h3>
               <p className="text-xs text-slate-400">
-                Google X-Y-Z formula bullets customized to add your missing target keywords.
+                Draft templates that use a relevant keyword and leave room for your real work and results.
               </p>
             </div>
           </div>
@@ -46,9 +46,16 @@ const BulletOptimizerModal = ({ isOpen, onClose, bulletSuggestions = [], onInser
           <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-200 flex items-start space-x-2">
             <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <span>
-              <strong>Formula:</strong> <i>"Accomplished [X] as measured by [Y], by doing [Z]"</i>. Click <strong>Insert Bullet</strong> to add directly into your live resume.
+              Replace every bracketed placeholder with accurate details from your own experience. Do not claim a skill, action, or result unless it is true.
             </span>
           </div>
+
+          {!bulletSuggestions.length && (
+            <div className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 text-xs text-slate-300">
+              No target terms are missing right now. You can still use the template below when you have a specific, truthful achievement to describe:
+              <div className="font-mono text-slate-200 mt-2">• Delivered [specific work] using [relevant tools], improving [measured outcome] by [verified result].</div>
+            </div>
+          )}
 
           {bulletSuggestions.map((item, idx) => (
             <div
@@ -75,16 +82,6 @@ const BulletOptimizerModal = ({ isOpen, onClose, bulletSuggestions = [], onInser
                   <span>{copiedIndex === idx ? 'Copied' : 'Copy'}</span>
                 </button>
 
-                <button
-                  onClick={() => {
-                    onInsertBullet(item.suggested_bullet);
-                    onClose();
-                  }}
-                  className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition cursor-pointer shadow-md shadow-indigo-600/30"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Insert into Resume</span>
-                </button>
               </div>
             </div>
           ))}

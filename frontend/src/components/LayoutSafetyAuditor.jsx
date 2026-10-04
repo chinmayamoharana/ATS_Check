@@ -9,8 +9,7 @@ const LayoutSafetyAuditor = ({ layoutSafety, keywordDensity }) => {
     found_bad_symbols,
     canonical_headers_count,
     found_canonical_headers,
-    is_contact_clean,
-    word_count_status
+    is_contact_clean
   } = layoutSafety;
 
   const overstuffed = keywordDensity?.overstuffed_keywords || [];
@@ -26,24 +25,24 @@ const LayoutSafetyAuditor = ({ layoutSafety, keywordDensity }) => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-extrabold text-white">ATS Parser Cleanliness & Layout Safety</h3>
+              <h3 className="text-base font-extrabold text-white">Text-Based Parser Checks</h3>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                Parser Trap Inspection
+                Extracted text only
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Evaluates non-standard bullet symbols, contact info header safety, and keyword stuffing risk.
+              Checks extracted symbols, recognizable headings, contact text, and repeated target terms. It cannot inspect the original page layout.
             </p>
           </div>
         </div>
 
         <div className="flex items-center space-x-3">
           <div className="text-right">
-            <span className="text-xs font-semibold text-slate-400 block">Parser Cleanliness Index</span>
+            <span className="text-xs font-semibold text-slate-400 block">Text heuristic</span>
             <span className={`text-lg font-black ${
               parser_safety_score >= 85 ? 'text-emerald-400' : parser_safety_score >= 70 ? 'text-amber-400' : 'text-rose-400'
             }`}>
-              {parser_safety_score}% Safe
+              {parser_safety_score}%
             </span>
           </div>
         </div>
@@ -88,16 +87,16 @@ const LayoutSafetyAuditor = ({ layoutSafety, keywordDensity }) => {
           )}
         </div>
 
-        {/* Diagnostic 4: TF-IDF Keyword Density */}
+        {/* Diagnostic 4: Repeated target terms */}
         <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
           <span className="text-[11px] font-bold text-slate-400 block mb-1">Keyword Stuffing Guard</span>
           {overstuffed.length === 0 ? (
             <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
-              <Sparkles className="w-4 h-4" /> Natural Density (&lt;4.5%)
+              <Sparkles className="w-4 h-4" /> No frequent repetition flagged
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400">
-              <AlertTriangle className="w-4 h-4" /> Overstuffed Terms ({overstuffed.length})
+              <AlertTriangle className="w-4 h-4" /> Review repeated terms ({overstuffed.length})
             </div>
           )}
         </div>

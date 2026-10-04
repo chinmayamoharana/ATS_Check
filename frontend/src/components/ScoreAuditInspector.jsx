@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, CheckCircle2, AlertTriangle, MinusCircle, ShieldCheck } from 'lucide-react';
+import { Calculator, CheckCircle2, AlertTriangle, MinusCircle } from 'lucide-react';
 
 const ScoreAuditInspector = ({ scoreAuditLog, totalScore, scoreGrade }) => {
   if (!scoreAuditLog || !Array.isArray(scoreAuditLog)) return null;
@@ -15,20 +15,17 @@ const ScoreAuditInspector = ({ scoreAuditLog, totalScore, scoreGrade }) => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-extrabold text-white">Transparent Score Calculation Audit</h3>
-              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3" /> 100% Math Verified
-              </span>
+              <h3 className="text-base font-extrabold text-white">Score points by check</h3>
             </div>
             <p className="text-xs text-slate-400">
-              Itemized point-by-point diagnostic breakdown showing exactly how your {totalScore} ({scoreGrade}) score was calculated.
+              Earned points from the text checks below add up to {totalScore} / 100 ({scoreGrade}).
             </p>
           </div>
         </div>
 
         <div className="flex items-center space-x-3">
           <div className="text-right">
-            <span className="text-xs font-semibold text-slate-400 block">Total Calculated ATS Score</span>
+            <span className="text-xs font-semibold text-slate-400 block">Total review score</span>
             <span className="text-xl font-black text-indigo-400">
               {totalScore} <span className="text-xs font-normal text-slate-400">/ 100 Pts</span>
             </span>

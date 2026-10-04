@@ -6,8 +6,7 @@ const JobDescriptionPanel = ({
   setJobRole,
   jobDescription,
   setJobDescription,
-  jobTemplates,
-  onAnalyze
+  jobTemplates
 }) => {
   return (
     <div className="glass-card rounded-2xl p-5 sm:p-6 border border-slate-800 mb-6">
@@ -68,7 +67,7 @@ const JobDescriptionPanel = ({
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
             <FileText className="w-4 h-4 text-pink-400" />
-            <span>Custom Job Description (Optional for 100% Exact Match)</span>
+            <span>Custom Job Description (optional)</span>
           </label>
           <span className="text-[11px] text-slate-500">
             {jobDescription ? `${jobDescription.split(/\s+/).filter(Boolean).length} words` : 'Empty'}
@@ -78,7 +77,7 @@ const JobDescriptionPanel = ({
         <textarea
           value={jobDescription}
           onChange={(e) => setJobDescription(e.target.value)}
-          placeholder="Paste job description requirements, responsibilities, and required qualifications here..."
+          placeholder="Paste the job description to compare relevant skills and repeated role terms..."
           rows={3}
           className="w-full glass-input p-3 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 transition resize-y min-h-[90px]"
         />

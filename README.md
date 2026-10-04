@@ -1,132 +1,59 @@
-# ATS RealTime Studio v2.0 🎯
-> **AI-Powered Enterprise ATS Resume Optimizer & Realtime Job Matcher**
+# ClearCV Resume Review
 
-![React](https://img.shields.io/badge/React-19.2.0-blue?logo=react)
-![Django](https://img.shields.io/badge/Django-6.0.1-green?logo=django)
-![Django REST Framework](https://img.shields.io/badge/DRF-3.16.1-red?logo=django)
-![Vite](https://img.shields.io/badge/Vite-7.3.1-purple?logo=vite)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.1.18-38bdf8?logo=tailwindcss)
-![Python](https://img.shields.io/badge/Python-3.13-yellow?logo=python)
+ClearCV extracts text from an uploaded resume and reports a transparent resume quality score with evidence-based suggestions. It does not predict a specific employer's ATS result or guarantee an interview.
 
----
+## What it checks
 
-## 🌟 Overview
+- Email and phone visibility.
+- Common resume sections and headings.
+- Skills and competency terms recognized by the included taxonomy.
+- Work history dates, role titles, and accomplishment bullets.
+- Measurable outcomes and action language.
+- Broad text length and bullet character signals.
+- Optional education and certifications are reported but do not affect the score.
 
-**ATS RealTime Studio v2.0** is an enterprise-grade Applicant Tracking System (ATS) resume optimization platform modeled after the parsing, ranking, and search algorithms of **Workday, Oracle Taleo, Greenhouse, Lever, iCIMS, and SAP SuccessFactors**.
+The score is a general heuristic. It is not tailored to a job description, and visual PDF layout is not fully evaluated. Image-only scanned PDFs require OCR, which is not currently configured. Always review the extracted text and suggestions yourself.
 
-It provides job seekers with real-time debounced scoring (<50ms), a side-by-side live editor, recruiter Boolean query qualification testing, Workday parser cleanliness safety checks, 1-click ATS-proven PDF exports, and an itemized mathematical audit log.
+## Local setup
 
----
+Requirements: Python 3.13 and Node.js 18 or newer.
 
-## 🔥 Key Features
+### Backend
 
-### 1. 📊 7-Pillar Enterprise ATS Scoring Matrix (100 Pts Total)
-Evaluates candidates across the 7 foundational pillars used by enterprise hiring scorecards:
-*   **Pillar 1: Career Path & Work Experience (25 Pts)** — Tenure length, recency, and leadership title trajectory.
-*   **Pillar 2: Technical Skills & Tools Match (25 Pts)** — Hard keyword match ratio against target role taxonomies.
-*   **Pillar 3: Projects & Portfolio Quality (15 Pts)** — Dedicated project entries and tech stack mentions.
-*   **Pillar 4: Education & Certifications (15 Pts)** — Academic degrees (B.Tech, B.S., M.S., Ph.D.) and industry certs (AWS, GCP, CKA, PMP, Scrum).
-*   **Pillar 5: Soft Skills & Action Verbs (10 Pts)** — High-impact action verbs and leadership terms.
-*   **Pillar 6: Culture Fit & Open Source (5 Pts)** — Open-source contributions, GitHub links, tech blogs, and personal hobbies.
-*   **Pillar 7: Formatting & Readability (5 Pts)** — Word count density (300–1000 words) and clean header layouts.
-
-### 2. 🔍 Recruiter Boolean Search Simulator
-Simulates recruiter Boolean query filters (e.g. `("Senior" OR "Lead") AND ("Python" OR "Django") AND "AWS"`). Displays real-time Boolean qualification percentage (&ge;75% required to pass knockout filters).
-
-### 3. 🛡️ ATS Parser Cleanliness & Layout Safety Auditor
-Detects enterprise parsing traps:
-*   Non-standard bullet symbols (`➢`, `★`, `■`, `✔`).
-*   Header/footer contact information risks.
-*   Canonical heading compliance (`Work Experience`, `Education`, `Technical Skills`, `Key Projects`).
-*   **TF-IDF Keyword Stuffing Guard**: Flags terms exceeding 4.5% density to prevent keyword stuffing penalties.
-
-### 4. 📄 1-Click ATS Clean PDF Exporter & Template Studio
-Includes **3 Workday/Taleo certified single-column templates**:
-*   **Tech Standard (Classic)** — Single-column serif/sans typography with canonical section headers and inline contact info.
-*   **Executive Compact** — High-density spacing optimized for experienced candidates (5+ yrs) fitting cleanly on 1 page.
-*   **Minimalist Clean** — Modern layout with left-aligned indigo accent borders.
-*   **1-Click High-Res PDF Export** powered by `html2pdf.js` with 100% text selectability.
-
-### 5. 📑 100% Full Resume Extraction Inspector
-Multi-engine PDF text extraction pipeline combining **`pdfplumber`**, **`pypdfium2`**, and **`pdfminer.six`** to extract 100% of uploaded document text without truncation. Includes a scrollable raw text viewer and 1-click **Copy Raw Text**.
-
-### 6. 🧮 Transparent Mathematical Score Calculation Log
-Provides an itemized point addition/deduction table showing exact math (`+22 pts`, `+18.5 pts`, `-2 pts`) with explicit human-readable diagnostic explanations.
-
-### 7. 🤖 Google X-Y-Z Bullet Point Optimizer
-Generates ready-to-use bullet points based on Google's formula: *"[Accomplished X] as measured by [Y], by doing [Z]"*.
-
----
-
-## 🛠️ Technology Stack
-
-*   **Frontend**: React 19, Vite 7, Tailwind CSS 4, Lucide React Icons, html2pdf.js, Axios, React Router 7.
-*   **Backend**: Python 3.13, Django 6, Django REST Framework 3.16, pdfplumber, pypdfium2, pdfminer.six, python-docx, django-cors-headers.
-
----
-
-## ⚙️ Installation & Local Setup
-
-### Prerequisites
-*   Python 3.10+
-*   Node.js 18+
-
-### 1. Clone Repository
-```bash
-git clone https://github.com/chinmayamoharana/ATS_Check.git
-cd ATS_Check
-```
-
-### 2. Backend Setup (Django)
-```bash
-# Navigate to backend directory
+```powershell
 cd backend
-
-# Create & activate virtual environment
 python -m venv venv
-
-# Windows PowerShell:
 .\venv\Scripts\Activate.ps1
-
-# Linux / macOS:
-source venv/bin/activate
-
-# Install required dependencies
-pip install django djangorestframework django-cors-headers pdfplumber pypdfium2 pdfminer.six python-docx pillow
-
-# Run migrations & start server
-python ats_backend/manage.py runserver 8000
+python -m pip install -r requirements.txt
+cd ats_backend
+python manage.py check
+python manage.py runserver 8001
 ```
-*Backend runs on `http://127.0.0.1:8000/`*
 
-### 3. Frontend Setup (React / Vite)
-```bash
-# Navigate to frontend directory
-cd ../frontend
+The API runs at `http://127.0.0.1:8001/`.
 
-# Install dependencies
+### Frontend
+
+```powershell
+cd frontend
 npm install
-
-# Start Vite dev server
-npm run dev
+npm run lint
+npm run dev -- --host 127.0.0.1
 ```
-*Frontend runs on `http://localhost:5173/`*
 
----
+Vite prints the local URL when it starts. For a separate backend, set `VITE_API_BASE_URL` to its `/api/ats` URL before starting/building the frontend. Production deployments must configure the API URL and Django CORS origins for their actual hostnames.
 
-## 🔌 API Endpoints Reference
+## Backend configuration
 
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/api/ats/check/` | `POST` | Multipart file upload endpoint (`.pdf`, `.docx`, `.txt`). Returns 100% extracted text & 7-pillar ATS analysis. |
-| `/api/ats/realtime-analyze/` | `POST` | Real-time JSON endpoint for debounced live text scoring (<50ms). |
-| `/api/ats/job-templates/` | `GET` | Returns preset job role templates & core skill taxonomies (`fullstack`, `frontend`, `backend`, `devops`, `datascience`, `mobile`, `productmanager`). |
+`backend/env.example` lists the Django environment variables. It is a reference file; export the values in the shell or deployment environment. Before deployment:
 
----
+- Set a unique `DJANGO_SECRET_KEY` outside source control.
+- Set `DJANGO_DEBUG=false` and configure `DJANGO_ALLOWED_HOSTS`.
+- Set `CORS_ALLOWED_ORIGINS` to the frontend origin(s) only.
+- Serve the application over HTTPS and use a production WSGI/ASGI server.
 
-## 👤 Author
+The upload API limits files to 10 MB and extracted text to 200,000 characters. It processes the upload for analysis without saving it to the project's database or media directory. Add rate limiting and operational privacy/retention policy before opening the service to public traffic.
 
-**Chinmaya Moharana**
-*   **GitHub**: [@chinmayamoharana](https://github.com/chinmayamoharana)
-*   **LinkedIn**: [Chinmaya Moharana](https://www.linkedin.com/in/chinmayac1)
-*   **Portfolio**: [chinmaya-moharana-22.vercel.app](https://chinmaya-moharana-22.vercel.app)
+## API
+
+`POST /api/ats/check/` accepts a multipart `resume` file in PDF, DOCX, or TXT format. It returns the score, individual checks, recommendations, extracted text, and extraction warnings. Text-only PDFs are supported; scanned image PDFs currently return an extraction error because OCR is not installed.
